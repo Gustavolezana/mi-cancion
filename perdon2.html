@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>¿Me perdonas?</title>
+<style>
+  :root{
+    --bg1:#0f0b1d; --bg2:#26173a; --bg3:#421b3a;
+    --ink:#3b0a25; --muted:#7b4c66;
+    --pink:#ff3b6e; --yes:#ff4f6f; --no:#ffdfe8;
+  }
+  body{  /* con musicaaa */ 
+    margin:0; min-height:100vh; display:grid; place-items:center;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 10% 20%, #ff3b6e22, transparent 60%),
+      radial-gradient(1000px 500px at 90% 80%, #ff9bb622, transparent 60%),
+      radial-gradient(circle at 50% 50%, var(--bg3), var(--bg2) 40%, var(--bg1) 100%);
+    overflow:hidden;
+  }
+  .card{
+    width:min(92vw, 720px);
+    background:linear-gradient(#fff,#fef6fa);
+    border-radius:24px;
+    box-shadow:0 10px 40px rgba(0,0,0,.18), inset 0 1px 0 #ffffffaa;
+    padding:28px 22px 30px;
+    text-align:center; position:relative;
+  }
+  .heart{ width:110px; height:110px; margin:6px auto 0;
+    filter: drop-shadow(0 8px 16px rgba(255,59,110,.35));}
+  h1{ margin:12px 0 6px; font-size:clamp(1.5rem,4.2vw,2.2rem); line-height:1.15;}
+  p{ margin:0 10px 18px; color:var(--muted)} p b{ color:var(--ink)}
+
+  .btnZone{
+    position:relative; width:100%; height:200px;
+    display:flex; align-items:center; justify-content:center; gap:14px;
+    margin-top:6px;
+  }
+  button{
+    border:0; cursor:pointer; padding:.8rem 1.2rem; border-radius:999px;
+    font-weight:700; font-size:1rem; user-select:none; touch-action:manipulation;
+    transition: transform .15s ease, box-shadow .2s ease, left .12s ease, top .12s ease;
+    position:relative; z-index:1;
+  }
+  #yesBtn{
+    background:linear-gradient(180deg, var(--yes), var(--pink));
+    color:#fff; box-shadow:0 8px 16px rgba(255,59,110,.35);
+  }
+  #yesBtn:active{ transform:scale(.97) }
+
+  /* “No” inicia a la derecha del “Sí” y luego huye */
+  #noBtn{
+    position:absolute; background:var(--no); color:#c63357;
+    box-shadow:0 6px 12px rgba(255,107,143,.25);
+    left: calc(50% + 90px); top: 50%;
+    transform: translateY(-50%);
+    z-index:2; will-change:left, top, transform;
+  }
+
+  .hidden{ display:none }
+  .big{ font-size:clamp(1.6rem,5.5vw,2.2rem); margin:10px 0 6px; }
+  .fade-in{ animation:fadeIn .35s both } .fade-out{ animation:fadeOut .3s both }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  @keyframes fadeOut{ from{opacity:1} to{opacity:0; transform:translateY(-8px)} }
+
+  .photo{
+    display:block; margin:8px auto 12px; width:min(70vw,420px); max-height:55vh;
+    object-fit:cover; border-radius:16px;
+    box-shadow:0 10px 25px rgba(0,0,0,.18), 0 0 0 6px #ffffffcc, 0 0 32px rgba(255,59,110,.18);
+  }
+
+  .pop{ position:fixed; inset:0; pointer-events:none }
+  .heart-pop{ position:absolute; font-size:22px; animation:floatUp 900ms ease-out forwards }
+  @keyframes floatUp{ 0%{transform:translateY(0) scale(.6);opacity:0}
+    10%{opacity:1} 100%{transform:translateY(-120px) scale(1.2);opacity:0}}
+
+  /* Aviso para activar audio si el navegador lo bloquea */
+  .audioGate{
+    position:fixed; inset:0; display:none; place-items:center; text-align:center;
+    background:rgba(0,0,0,.25); backdrop-filter: blur(2px);
+    z-index:9999; color:#fff; font-weight:700;
+  }
+  .audioGate button{
+    background:#ffffff; color:#2b1030; border:0; border-radius:999px;
+    padding:.7rem 1.2rem; font-weight:800; margin-top:10px; cursor:pointer;
+    box-shadow:0 10px 25px rgba(0,0,0,.18);
+  }
+</style>
+</head>
+<body>
+<main id="app">
+  <!-- PANTALLA 1 -->
+  <section id="step1" class="card fade-in" aria-live="polite">
+    <svg class="heart" viewBox="0 0 100 90" aria-hidden="true">
+      <path fill="url(#g)" d="M50 82S3 57 3 29C3 16 13 6 26 6c9 0 17 5 21 13 4-8 12-13 21-13 13 0 23 10 23 23 0 28-47 53-47 53Z"/>
+      <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" stop-color="#ff6b8f"/><stop offset="1" stop-color="#ff3b6e"/></linearGradient></defs>
+    </svg>
+
+    <h1>¿Me perdonas?</h1>
+    <p>Prometo compensarte con mil <b>Te quieros</b> más 💖</p>
+
+    <div class="btnZone" id="zone">
+      <button id="yesBtn">Sí</button>
+      <button id="noBtn">No</button>
+    </div>
+  </section>
+
+  <!-- PANTALLA 2 -->
+  <section id="step2" class="card hidden" aria-live="polite">
+    <img class="photo"
+         src="https://gustavolezana.github.io/mi-cancion/mifoto.jpeg"
+         alt="Nuestra foto" loading="lazy" decoding="async" />
+    <div class="big">¡Sabía que dirías que sí, amor! 💞</div>
+    <p>Gracias por perdonarme. Ahora te debo esos <b>mil “Te quieros”</b> ✨</p>
+  </section>
+</main>
+
+<div class="pop" id="popLayer" aria-hidden="true"></div>
+
+<!-- 🎵 Música: intenta sonar desde el inicio -->
+<audio id="bgm"
+  src="https://gustavolezana.github.io/mi-cancion/TikVid.io_7539316207938325781.mp3"
+  preload="auto" autoplay loop playsinline></audio>
+
+<!-- Aviso si el navegador bloquea el autoplay con sonido -->
+<div id="audioGate" class="audioGate">
+  <div>
+    <div>🔊 Toca para activar la música</div>
+    <button id="enableAudioBtn">Reproducir</button>
+  </div>
+</div>
+
+<script>
+  const zone  = document.getElementById('zone');
+  const noBtn = document.getElementById('noBtn');
+  const yesBtn= document.getElementById('yesBtn');
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const pop   = document.getElementById('popLayer');
+
+  /* ===== Botón NO que huye ===== */
+  function clamp(v,min,max){ return Math.min(max, Math.max(min, v)); }
+  function moveNoRandom(awayFrom){
+    const z = zone.getBoundingClientRect();
+    const w = noBtn.offsetWidth, h = noBtn.offsetHeight, pad = 6;
+    const maxX = z.width - w - pad, maxY = z.height - h - pad;
+    let x = Math.random()*maxX + pad, y = Math.random()*maxY + pad;
+
+    if(awayFrom){
+      const px = awayFrom.clientX - z.left, py = awayFrom.clientY - z.top;
+      const dx = (x - px), dy = (y - py), mag = Math.max(1, Math.hypot(dx, dy));
+      x = clamp(px + (dx/mag)*160, pad, maxX);
+      y = clamp(py + (dy/mag)*160, pad, maxY);
+    }
+    noBtn.style.left = x + 'px';
+    noBtn.style.top  = y + 'px';
+    noBtn.style.transform = 'translate(0,0) rotate(' + (Math.random()*14-7) + 'deg)';
+  }
+  const dodge = e => { e.preventDefault(); moveNoRandom(e); };
+
+  noBtn.addEventListener('pointerenter', moveNoRandom);
+  noBtn.addEventListener('pointerdown', dodge, {passive:false});
+  noBtn.addEventListener('click', dodge);
+  noBtn.addEventListener('touchstart', dodge, {passive:false});
+
+  zone.addEventListener('pointermove', (e)=>{
+    const b = noBtn.getBoundingClientRect(), z = zone.getBoundingClientRect();
+    const px = e.clientX, py = e.clientY, cx = b.left + b.width/2, cy = b.top + b.height/2;
+    const d = Math.hypot(px - cx, py - cy);
+    if(d < 100 && px>z.left && px<z.right && py>z.top && py<z.bottom) moveNoRandom(e);
+  });
+
+  yesBtn.addEventListener('click', () => {
+    step1.classList.add('fade-out');
+    setTimeout(() => {
+      step1.classList.add('hidden');
+      step2.classList.remove('hidden');
+      step2.classList.add('fade-in');
+      burstHearts();
+    }, 280);
+  });
+
+  function burstHearts(){
+    const qty = 16;
+    for(let i=0;i<qty;i++){
+      const s = document.createElement('span');
+      s.className = 'heart-pop';
+      s.textContent = ['💖','💗','💞','💘'][Math.floor(Math.random()*4)];
+      s.style.left = (window.innerWidth/2 + (Math.random()*160 - 80)) + 'px';
+      s.style.top  = (window.innerHeight/2 + (Math.random()*80 - 40)) + 'px';
+      s.style.animationDelay = (Math.random()*140)+'ms';
+      pop.appendChild(s);
+      s.addEventListener('animationend', ()=> s.remove());
+    }
+  }
+
+  /* ===== Música desde el inicio ===== */
+  const audio = document.getElementById('bgm');
+  const gate  = document.getElementById('audioGate');
+  const enableBtn = document.getElementById('enableAudioBtn');
+
+  function tryStartMusic(){
+    audio.volume = 0.6;
+    audio.play()
+      .then(()=> gate.style.display = 'none')   // ¡sonando!
+      .catch(()=> gate.style.display = 'grid'); // bloqueado -> mostrar aviso
+  }
+
+  // intenta en cuanto carga el DOM y de nuevo al cargar todo
+  document.addEventListener('DOMContentLoaded', tryStartMusic);
+  window.addEventListener('load', tryStartMusic);
+
+  // si estuvo bloqueado, un toque en el botón (o cualquier toque) la activa
+  enableBtn.addEventListener('click', tryStartMusic);
+  document.addEventListener('pointerdown', function once(){
+    tryStartMusic(); document.removeEventListener('pointerdown', once);
+  });
+
+  // Mantener la posición inicial del NO a la derecha del “Sí”.
+  window.addEventListener('resize', ()=> moveNoRandom());
+</script>
+</body>
+</html>
