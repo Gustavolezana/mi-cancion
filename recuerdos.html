@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Corazón de Partículas — espacio + mensajes (fix)</title>
+<style>
+  html,body{height:100%;margin:0}
+  body{background:#000;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<!-- 🎵 Audio de fondo -->
+<audio id="bgm" preload="auto" loop playsinline></audio>
+<!-- Overlay para desbloquear audio si el navegador bloquea el autoplay -->
+<div id="audioOverlay" class="hidden" role="button" aria-label="Tocar para activar música">
+  <div class="content">Toca para activar la música ❤️</div>
+</div>
+<style>
+  #audioOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(600px 400px at 50% 50%,rgba(255,255,255,.06),rgba(0,0,0,.88));color:#fff;z-index:5;transition:opacity .3s ease;}
+  #audioOverlay.hidden{opacity:0;pointer-events:none}
+  #audioOverlay .content{font:700 clamp(18px,4vw,28px)/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:.5px;padding:14px 18px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(0,0,0,.35);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+</style>
+<script>
+(() => {
+  const DPR = Math.max(1, window.devicePixelRatio || 1);
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+
+  // ===== Parámetros corazón =====
+  const OUTLINE_COUNT = 950;     // partículas fijas del contorno
+  const INNER_COUNT   = 1300;    // partículas que fluyen hacia el centro
+  const CENTER_PULL   = 0.030;   // fuerza de atracción al centro
+  const DAMPING       = 0.985;   // amortiguación
+  const CAPTURE_R     = 10;      // radio de captura (respawn) en px canvas
+  const NOISE         = 0.002;   // ruido leve para evitar líneas rígidas
+  const PARTICLE_R_MIN= 0.45;    // tamaño mínimo (en px a 1x)
+  const PARTICLE_R_MAX= 0.9;     // tamaño máximo (en px a 1x)
+  const HEART_SCALE   = 13;      // escala de la curva corazón (más alto = más grande)
+  const MARGIN        = 0.14;    // margen alrededor del corazón (0..0.3)
+
+  // ===== Parámetros estrellas de fondo =====
+  const STARS = 220;            // cantidad de estrellas
+  const STAR_TWINKLE = 0.25;    // fuerza del parpadeo
+  const STAR_MIN_R = 0.6;       // radio mínimo
+  const STAR_MAX_R = 1.6;       // radio máximo
+  const SHOOT_RATE = 0.35;      // estrellas fugaces por segundo aprox.
+  const SHOOT_SPEED = 820;      // px/seg
+  const SHOOT_TAIL = 120;       // largo de cola en px
+
+  // ===== Parámetros mensajes =====
+  const MESSAGE_SEQUENCE = [
+    { text: 'quiero que sepas que te quiero mucho Tefa' },
+    { text: 'quedate a mi lado amor!' }
+  ];
+  const FIRST_DELAY     = 3000; // ms antes del primer mensaje
+  const LETTER_STAGGER  = 70;   // ms entre letras
+  const LETTER_DUR      = 600;  // ms animación de cada letra
+  const MSG_HOLD        = 1600; // ms visible al 100%
+  const MSG_FADE        = 900;  // ms de desvanecimiento
+
+  let cx=0, cy=0, unit=1;        // mapeo a canvas
+
+  function resize(){
+    const w = innerWidth, h = innerHeight;
+    canvas.width = Math.floor(w*DPR);
+    canvas.height= Math.floor(h*DPR);
+    canvas.style.width = w+'px';
+    canvas.style.height= h+'px';
+    cx = canvas.width*0.5;       // CENTRADO
+    cy = canvas.height*0.5;      // CENTRADO
+    const side = Math.min(canvas.width, canvas.height);
+    unit = (side*(1-MARGIN)) / (32*HEART_SCALE);
+    buildOutline();
+    seedInner();
+    seedStars();
+    layoutMessage();
+  }
+  addEventListener('resize', resize);
+
+  // ===== Curva de corazón =====
+  function heartXY(t){
+    const x = 16 * Math.pow(Math.sin(t),3);
+    const y = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+    return {x,y};
+  }
+  function mapToCanvas(pt, s=1){ return {x: cx + pt.x*unit*s, y: cy - pt.y*unit*s}; }
+
+  // ===== Contorno estático =====
+  let outline = [];
+  function buildOutline(){
+    outline.length = 0; const N = OUTLINE_COUNT;
+    for(let i=0;i<N;i++){
+      const t = (i/N)*Math.PI*2; const p = mapToCanvas(heartXY(t), HEART_SCALE);
+      outline.push({x:p.x, y:p.y, a: 0.75 + 0.25*Math.random(), r:(PARTICLE_R_MIN+Math.random()*(PARTICLE_R_MAX-PARTICLE_R_MIN))*DPR, phase: Math.random()*Math.PI*2});
+    }
+  }
+
+  // ===== Partículas internas =====
+  class InnerParticle{
+    constructor(){ this.reset(); }
+    randomPointOnOutline(){ const idx = (Math.random()*outline.length)|0; return outline[idx]; }
+    reset(){
+      const o = this.randomPointOnOutline();
+      const dx = cx - o.x, dy = cy - o.y, d=Math.hypot(dx,dy)||1;
+      const inward = 4 + Math.random()*6; // px hacia adentro
+      this.x = o.x + (dx/d)*inward; this.y = o.y + (dy/d)*inward;
+      this.vx = 0; this.vy = 0;
+      this.r = (PARTICLE_R_MIN + Math.random()*(PARTICLE_R_MAX-PARTICLE_R_MIN))*DPR;
+      this.a = 0.65 + Math.random()*0.25;
+    }
+    step(dt){
+      const dx = cx - this.x, dy = cy - this.y; const d = Math.hypot(dx,dy)||1;
+      this.vx += (dx/d)*CENTER_PULL*(dt*60) + (Math.random()-0.5)*NOISE;
+      this.vy += (dy/d)*CENTER_PULL*(dt*60) + (Math.random()-0.5)*NOISE;
+      this.vx *= DAMPING; this.vy *= DAMPING; this.x  += this.vx*(dt*60); this.y += this.vy*(dt*60);
+      if(d < CAPTURE_R){ this.reset(); }
+    }
+  }
+  let inner = [];
+  function seedInner(){ inner.length = 0; for(let i=0;i<INNER_COUNT;i++) inner.push(new InnerParticle()); }
+
+  // ===== Estrellas de fondo =====
+  let stars = [];
+  class Star{
+    constructor(){ this.reseed(); }
+    reseed(){
+      this.x = Math.random()*canvas.width; this.y = Math.random()*canvas.height; this.z = Math.random()*1 + 0.5;
+      this.r = (STAR_MIN_R + Math.random()*(STAR_MAX_R-STAR_MIN_R))*this.z*DPR; this.a = 0.6 + Math.random()*0.4; this.phase = Math.random()*Math.PI*2;
+      this.vx = (Math.random()-0.5) * 6 * this.z; this.vy = (Math.random()-0.5) * 6 * this.z;
+    }
+    step(dt, now){ this.x += this.vx*(dt*60); this.y += this.vy*(dt*60); if(this.x < -10 || this.x > canvas.width+10 || this.y < -10 || this.y > canvas.height+10){ this.reseed(); } this.alpha = this.a + STAR_TWINKLE*Math.sin(now*0.002 + this.phase); }
+    draw(){ ctx.globalAlpha = Math.max(0, Math.min(1, this.alpha)); ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI*2); ctx.fill(); }
+  }
+  class ShootingStar{
+    constructor(){ this.init(); }
+    init(){
+      const side = Math.random() < 0.5 ? 'left' : 'right'; const fromTop = Math.random() < 0.5; const margin = 40*DPR;
+      if(fromTop){ this.x = Math.random()*canvas.width; this.y = -margin; } else if(side==='left'){ this.x = -margin; this.y = Math.random()*canvas.height*0.6; } else { this.x = canvas.width+margin; this.y = Math.random()*canvas.height*0.6; }
+      const angle = fromTop ? (Math.random()*0.6 + 0.2) : (side==='left' ? (Math.random()*0.4 + 0.1) : (Math.PI - (Math.random()*0.4 + 0.1)));
+      this.vx = Math.cos(angle) * SHOOT_SPEED * (Math.random()*0.4+0.8); this.vy = Math.sin(angle) * SHOOT_SPEED * (Math.random()*0.4+0.8); this.life = 0; this.ttl = 1000 + Math.random()*900;
+    }
+    step(dt){ this.life += dt*1000; this.x += this.vx*dt; this.y += this.vy*dt; }
+    draw(){ const t = Math.min(1, this.life/this.ttl); const alpha = (1-t)*0.9; ctx.save(); ctx.globalAlpha = alpha; ctx.lineWidth = 2*DPR; ctx.lineCap = 'round'; const tailX = this.x - this.vx*(SHOOT_TAIL/SHOOT_SPEED); const tailY = this.y - this.vy*(SHOOT_TAIL/SHOOT_SPEED); const grad = ctx.createLinearGradient(tailX, tailY, this.x, this.y); grad.addColorStop(0, 'rgba(255,80,80,0)'); grad.addColorStop(1, 'rgba(255,120,120,1)'); ctx.strokeStyle = grad; ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(this.x, this.y); ctx.stroke(); ctx.restore(); }
+    dead(){ return this.life >= this.ttl; }
+  }
+  function seedStars(){ stars.length = 0; for(let i=0;i<STARS;i++) stars.push(new Star()); }
+  let shooters = [];
+
+  // ===== Mensajes =====
+  let messageActive = false; let messageStart = 0; let glyphs = []; let fontSize = 32; let letterSpacing = 1; let msgIndex = 0; let appStart = 0;
+  function setCanvasFont(){ ctx.font = `700 ${fontSize}px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`; ctx.textBaseline = 'middle'; }
+  function measureTextWidth(str){ setCanvasFont(); let w = 0; for(const ch of str){ w += ctx.measureText(ch).width + letterSpacing; } return w; }
+  function layoutMessage(){ if(!MESSAGE_SEQUENCE[msgIndex]) return; const TEXT = MESSAGE_SEQUENCE[msgIndex].text; const maxW = canvas.width * 0.88; fontSize = Math.min(Math.round(canvas.width*0.06), Math.round(canvas.height*0.1)); fontSize = Math.max(18, fontSize); letterSpacing = Math.max(1, Math.round(fontSize*0.04)); setCanvasFont(); while(measureTextWidth(TEXT) > maxW && fontSize > 18){ fontSize -= 2; setCanvasFont(); letterSpacing = Math.max(1, Math.round(fontSize*0.04)); } setCanvasFont(); const totalW = measureTextWidth(TEXT) - letterSpacing; const x0 = cx - totalW/2; const y0 = cy; glyphs = []; let x = x0; for(const ch of TEXT){ const w = ctx.measureText(ch).width; glyphs.push({ ch, x: x + w/2, y: y0 }); x += w + letterSpacing; } }
+  function easeOutBack(t){ const c1 = 1.70158, c3 = c1 + 1; return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2); }
+  function drawMessage(now){ if(!messageActive || !MESSAGE_SEQUENCE[msgIndex]) return; const totalAppear = LETTER_STAGGER*(glyphs.length-1) + LETTER_DUR; const elapsed = now - messageStart; let global = 1; if(elapsed > totalAppear + MSG_HOLD){ const f = Math.min(1, (elapsed - (totalAppear + MSG_HOLD))/MSG_FADE); global = 1 - f; if(f >= 1){ msgIndex++; if(MESSAGE_SEQUENCE[msgIndex]){ layoutMessage(); messageStart = now; } else { messageActive = false; } return; } } ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = '#ff4d4d'; ctx.shadowColor = '#ff4d4d'; ctx.shadowBlur = 18 * DPR; setCanvasFont(); for(let i=0;i<glyphs.length;i++){ const g = glyphs[i]; const local = (elapsed - i*LETTER_STAGGER); const p = Math.max(0, Math.min(1, local/LETTER_DUR)); const a = p<=0?0: easeOutBack(p); const scale = 1.4 - 0.4*a; const y = g.y - (1-a)*fontSize*0.6; ctx.globalAlpha = a * global; ctx.save(); ctx.translate(g.x, y); ctx.scale(scale, scale); ctx.fillText(g.ch, 0, 0); ctx.restore(); } ctx.restore(); }
+
+  // ===== Dibujo =====
+  let dtCache = 0.016; function drawBackground(now){ ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.fillStyle = '#ffffff'; for(let i=0;i<stars.length;i++){ stars[i].step(dtCache, now); stars[i].draw(); } for(let i=shooters.length-1;i>=0;i--){ shooters[i].step(dtCache); shooters[i].draw(); if(shooters[i].dead()) shooters.splice(i,1); } }
+  function drawOutline(now){ ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = '#ff1d1d'; for(let i=0;i<outline.length;i++){ const o = outline[i]; const twinkle = 0.15*Math.sin(now*0.002 + o.phase); ctx.globalAlpha = Math.max(0, Math.min(1, o.a + twinkle)); ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI*2); ctx.fill(); } ctx.globalAlpha = 1; }
+  function drawInner(){ ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = '#ff2a2a'; for(let i=0;i<inner.length;i++){ const p = inner[i]; ctx.globalAlpha = p.a; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill(); } ctx.globalAlpha = 1; }
+
+  // ===== Animación principal =====
+  let prev = performance.now();
+  function frame(now){ const dt = Math.min(0.05, (now - prev)/1000); prev = now; dtCache = dt; if(!messageActive && (now - appStart) >= FIRST_DELAY){ messageActive = true; messageStart = now; msgIndex = 0; layoutMessage(); }
+    if(Math.random() < SHOOT_RATE * dt){ shooters.push(new ShootingStar()); }
+    drawBackground(now); for(let i=0;i<inner.length;i++) inner[i].step(dt); drawOutline(now); drawInner(); drawMessage(now); requestAnimationFrame(frame); }
+
+  // ===== Música de fondo =====
+  const AUDIO_URL = 'https://gustavolezana.github.io/mi-cancion/estoyenamorado.mp3';
+  const audioEl = document.getElementById('bgm');
+  const overlay = document.getElementById('audioOverlay');
+  function setupAudio(){
+    audioEl.src = AUDIO_URL; audioEl.volume = 0.8; audioEl.loop = true; audioEl.setAttribute('playsinline',''); audioEl.autoplay = true;
+    const tryPlay = () => audioEl.play().then(() => { overlay.classList.add('hidden'); }).catch(() => { overlay.classList.remove('hidden'); });
+    tryPlay();
+    // Reintentos amigables
+    const resume = () => { tryPlay(); if(window.AudioContext || window.webkitAudioContext){ const AC = new (window.AudioContext || window.webkitAudioContext)(); if(AC.state === 'suspended') AC.resume(); } };
+    overlay.addEventListener('click', resume);
+    window.addEventListener('pointerdown', resume, { once:true });
+    window.addEventListener('keydown', resume, { once:true });
+    document.addEventListener('visibilitychange', () => { if(!document.hidden && audioEl.paused) tryPlay(); });
+  }
+
+  // init
+  function init(){ resize(); appStart = performance.now(); setupAudio(); requestAnimationFrame(frame); }
+  if(document.readyState === 'complete' || document.readyState === 'interactive'){ init(); } else { addEventListener('DOMContentLoaded', init); }
+})();
+</script>
+</body>
+</html>
